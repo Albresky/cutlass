@@ -1,5 +1,4 @@
-// Minimal inline-PTX demo of cp.async.bulk.tensor (SM90+/SM100)
-// Focus: show exact operands mapping without CUTLASS/CUTE wrappers.
+// unittest for PTX instruction: cp.async.bulk.tensor (arch: SM90+)
 
 #include <cstdio>
 #include <cstdlib>
@@ -31,7 +30,7 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm, __half *g_out) {
   }
   __syncthreads();
 
-  //////////////// PTX operands mapping ////////////////
+  //////////////// PTX asm inline ////////////////
   // clang-format off
   /** Syntax of [cp.async.bulk.tensor]
    * // global -> shared::cta
@@ -85,14 +84,16 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm, __half *g_out) {
 // Host: Create TensorMap for tensor(M,N) row-major, box=64x64, element=fp16
 static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
                                                  int N, int ld) {
-  CUtensorMap tmap{}; // 128bit, must be aligned to 64B
-  // cute::TmaDescriptor tma_desc; // 128bit, equivalent to CUtensorMap
+  CUtensorMap tmap{}; // 128bit, must be aligned to 64B (equivalent to
+                      // cute::TmaDescriptor)
 
-  // ref: include/cute/arch/copy_sm90_desc.hpp
+  // reference: include/cute/arch/copy_sm90_desc.hpp
   CUtensorMapDataType tma_type =
       cute::TMA::to_CUtensorMapDataType<cute::half_t>();
+
   constexpr cuuint32_t tma_rank = 2;
-  assert((tma_rank >= 2) && "This function only supports tensor rank>=2");
+  assert((tma_rank >= 2) && "This function only supports `tensor rank >= 2`");
+
   assert((reinterpret_cast<uint64_t>(gmem_addr) & 0b1111) ==
          0); // Address must be 16B-aligned
 
@@ -102,7 +103,7 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
 
   // stride in elements, with stride[0] implicitly 1 per PTX doc
   // Fix: referring to CUTLASS, stride[0] will get ignored, but stride[1] must
-  // align with
+  // align with 16B.
   cuuint64_t gmem_prob_stride[tma_rank - 1] = {static_cast<cuuint64_t>(ld)};
 
   for (int i = 0; i < tma_rank - 1; ++i) {
@@ -113,8 +114,8 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
   // boxDim (tile in SMEM)
   cuuint32_t smem_box_shape[tma_rank] = {64u, 64u};
 
-  // Box stride in elements (row-major contiguous), must in range [1,8] == 1...8
-  // !!!! reference:
+  // Box stride in elements (row-major contiguous), range: [1,8] !!!
+  // reference:
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html#group__CUDA__TENSOR__MEMORY_1ga7c7d2aaac9e49294304e755e6f341d7
   cuuint32_t smem_box_stride[tma_rank] = {1u, 1u};
 
@@ -128,7 +129,7 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
       /* tensorMap */       &tmap, 
       /* tensorDataType */  tma_type, 
       /* tensorRank */      tma_rank, 
-      /* globalAddress */   const_cast<void *>(gmem_addr), 
+      /* globalAddress */   gmem_addr, 
       /* globalDim */       gmem_dim_shape, 
       /* globalStrides */   gmem_prob_stride, 
       /* boxDim */          smem_box_shape,
@@ -138,18 +139,11 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
       /* l2Promotion */     tma_l2Promotion, 
       /* oobFill */         tma_oobFill);
   if (res != CUDA_SUCCESS) {
-    // TODO: res == 1, 
-    /**
-     * CUDA_ERROR_INVALID_VALUE                  = 1,
-     * This indicates that one or more of the parameters passed to the API call
-     * is not within an acceptable range of values.
-     */
-    
-    std::cerr << "Error: Failed to initialize the TMA descriptor " << res << std::endl;
+    std::cerr << "Error: Failed to initialize the TMA descriptor, error code: " << res << std::endl;
     std::cerr << "TMA Desc Addr:   " << &tmap
               << "\ntensorDataType " << tma_type
               << "\ntensorRank     " << tma_rank
-              << "\ngmem_address   " << const_cast<void *>(gmem_addr)
+              << "\ngmem_address   " << gmem_addr
               << "\nglobalDim      " << *gmem_dim_shape
               << "\nglobalStrides  " << *gmem_prob_stride
               << "\nboxDim         " << *smem_box_shape
@@ -214,11 +208,12 @@ int main() {
   }
 
   if (!errors)
-    std::cout << "PASS!" << std::endl;
+    std::cout << "Test PASS!" << std::endl;
   else
-    std::cout << "FAIL with " << errors << " errors!" << std::endl;
+    std::cout << "Test FAIL! Errors: " << errors << std::endl;
 
   cudaFree(d_tmap);
   cudaFree(dA);
+  cudaFree(d_out);
   return 0;
 }

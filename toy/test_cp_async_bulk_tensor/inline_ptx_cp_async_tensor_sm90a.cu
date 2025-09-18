@@ -16,7 +16,7 @@
 // cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes.
 //  - gtm: device pointer to TensorMap
 extern "C" __global__ void
-k_inline_tma_2d_shared_cta(const void *__restrict__ gtm) {
+k_inline_tma_2d_shared_cta(const void *__restrict__ gtm, __half *g_out) {
   extern __shared__ __align__(16) unsigned char smem[];
 
   // Layout: [tile (64*64*2 bytes)] [mbarrier (8 bytes)]
@@ -75,9 +75,10 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm) {
   // Wait for completion
   cutlass::arch::ClusterTransactionBarrier::wait(mbar, /*phase=*/0);
 
-  if (threadIdx.x < 4) {
-    float v = __half2float(tile[threadIdx.x]);
-    printf("inline-ptx s[0+%u]=%f\n", threadIdx.x, v);
+  // Copy tile from smem to gmem
+  constexpr int num_elements = 64 * 64;
+  for (int idx = threadIdx.x; idx < num_elements; idx += blockDim.x) {
+    g_out[idx] = tile[idx];
   }
 }
 
@@ -109,11 +110,11 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
     assert((gmem_prob_stride[i] & 0b1111) == 0 && "Stride must be 16B aligned");
   }
 
-  // Box shape (tile in SMEM)
+  // boxDim (tile in SMEM)
   cuuint32_t smem_box_shape[tma_rank] = {64u, 64u};
 
-  // Box stride in elements (row-major contiguous), must in range [1,8] == 1...8 !!!!
-  // reference:
+  // Box stride in elements (row-major contiguous), must in range [1,8] == 1...8
+  // !!!! reference:
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html#group__CUDA__TENSOR__MEMORY_1ga7c7d2aaac9e49294304e755e6f341d7
   cuuint32_t smem_box_stride[tma_rank] = {1u, 1u};
 
@@ -166,9 +167,14 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
 int main() {
   // Initialize params
   constexpr int M = 256, N = 256;
+  constexpr int TILE_M = 64, TILE_N = 64;
+
   size_t bytes = size_t(M) * N * sizeof(__half); // fp16 * M * N
   __half *dA = nullptr;
   cudaMalloc(&dA, bytes);
+
+  __half *d_out = nullptr;
+  cudaMalloc(&d_out, TILE_M * TILE_N * sizeof(__half));
 
   std::vector<__half> hA(M * N);
   for (int i = 0; i < M * N; ++i)
@@ -187,8 +193,30 @@ int main() {
   size_t smem = 64 * 64 * sizeof(__half) + sizeof(uint64_t);
   cudaFuncSetAttribute(k_inline_tma_2d_shared_cta,
                        cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem);
-  k_inline_tma_2d_shared_cta<<<grid, block, smem>>>(d_tmap);
+  k_inline_tma_2d_shared_cta<<<grid, block, smem>>>(d_tmap, d_out);
   cudaDeviceSynchronize();
+
+  std::vector<__half> h_out(TILE_M * TILE_N);
+  cudaMemcpy(h_out.data(), d_out, TILE_M * TILE_N * sizeof(__half),
+             cudaMemcpyDeviceToHost);
+
+  // Verify with golden
+  int errors = 0;
+  for (int m = 0; m < TILE_M; ++m) {
+    for (int n = 0; n < TILE_N; ++n) {
+      __half v = h_out[m * TILE_N + n];
+      __half golden = hA[m * N + n];
+      if (v != golden) {
+        printf("Error: golden[%d, %d]=%f, value[%d, %d]=%f\n", m, n,
+               __half2float(golden), m, n, __half2float(v));
+      }
+    }
+  }
+
+  if (!errors)
+    std::cout << "PASS!" << std::endl;
+  else
+    std::cout << "FAIL with " << errors << " errors!" << std::endl;
 
   cudaFree(d_tmap);
   cudaFree(dA);

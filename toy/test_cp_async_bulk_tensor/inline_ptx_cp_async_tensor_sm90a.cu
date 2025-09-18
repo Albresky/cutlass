@@ -129,7 +129,7 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
       /* tensorMap */       &tmap, 
       /* tensorDataType */  tma_type, 
       /* tensorRank */      tma_rank, 
-      /* globalAddress */   gmem_addr, 
+      /* globalAddress */   const_cast<void*>(gmem_addr), 
       /* globalDim */       gmem_dim_shape, 
       /* globalStrides */   gmem_prob_stride, 
       /* boxDim */          smem_box_shape,
@@ -143,7 +143,7 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
     std::cerr << "TMA Desc Addr:   " << &tmap
               << "\ntensorDataType " << tma_type
               << "\ntensorRank     " << tma_rank
-              << "\ngmem_address   " << gmem_addr
+              << "\ngmem_address   " << const_cast<void*>(gmem_addr)
               << "\nglobalDim      " << *gmem_dim_shape
               << "\nglobalStrides  " << *gmem_prob_stride
               << "\nboxDim         " << *smem_box_shape

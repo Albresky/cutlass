@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include <cutlass/arch/barrier.h>
+#include <cutlass/cuda_host_adapter.hpp>
 
 // Copy a 64x64 tile starting at (row=0,col=0) into shared memory via PTX:
 // cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes.
@@ -79,33 +80,45 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm) {
   }
 }
 
-// Host: Crete TensorMap for (M,N) row-major, box=64x64, element=fp16
+// Host: Create TensorMap for tensor(M,N) row-major, box=64x64, element=fp16
 static CUtensorMap make_tensormap_half_row_major(const void *base, int M, int N,
                                                  int ld) {
   CUtensorMap tmap{};
   CUtensorMapDataType type = CU_TENSOR_MAP_DATA_TYPE_FLOAT16;
-  uint32_t dim = 2;
+  cuuint32_t dim = 2;
   CUtensorMapInterleave interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
-  CUtensorMapL2promotion l2promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_128B;
+  CUtensorMapL2promotion l2promotion = CU_TENSOR_MAP_L2_PROMOTION_NONE;
   CUtensorMapFloatOOBfill oob = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE;
   
   // shape (M,N)
-  uint64_t shape[2] = {static_cast<uint64_t>(M), static_cast<uint64_t>(N)};
+  cuuint64_t shape[2] = {static_cast<cuuint64_t>(M), static_cast<cuuint64_t>(N)};
   
   // stride in elements, with stride[0] implicitly 1 per PTX doc
-  uint64_t stride_elems[2] = {0,
-                              static_cast<uint64_t>(ld)}; // stride[0] ignored
+  cuuint64_t stride_elems[2] = {0,
+                              static_cast<cuuint64_t>(ld)}; // stride[0] ignored
   
   // Box shape (tile in SMEM)
-  uint32_t box[2] = {64u, 64u};
+  cuuint32_t box[2] = {64u, 64u};
 
   // Box stride in elements (row-major contiguous)
-  uint32_t bstride[2] = {64u, 1u};
-  CUtensorMapSwizzle swz = CU_TENSOR_MAP_SWIZZLE_64B;
+  cuuint32_t bstride[2] = {64u, 1u};
+  CUtensorMapSwizzle swz = CU_TENSOR_MAP_SWIZZLE_NONE;
 
-  CUresult res = cuTensorMapEncodeTiled(
-      &tmap, type, dim, const_cast<void *>(base), shape, stride_elems + 1, box,
-      bstride, interleave, swz, l2promotion, oob);
+  // clang-format off
+  CUresult res = CUTLASS_CUDA_DRIVER_WRAPPER_CALL(cuTensorMapEncodeTiled)(
+      &tmap, 
+      type, 
+      dim, 
+      const_cast<void *>(base), 
+      shape, 
+      stride_elems + 1, 
+      box,
+      bstride, 
+      interleave, 
+      swz, 
+      l2promotion, 
+      oob);
+  // clang-format on
   if (res != CUDA_SUCCESS) {
     std::cerr << "cuTensorMapEncodeTiled failed: " << res << std::endl;
     std::abort();

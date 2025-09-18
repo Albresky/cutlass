@@ -84,43 +84,52 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm) {
 // Host: Create TensorMap for tensor(M,N) row-major, box=64x64, element=fp16
 static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
                                                  int N, int ld) {
-  CUtensorMap tmap{}; // 128bit
+  CUtensorMap tmap{}; // 128bit, must be aligned to 64B
   // cute::TmaDescriptor tma_desc; // 128bit, equivalent to CUtensorMap
 
   // ref: include/cute/arch/copy_sm90_desc.hpp
-  // CUtensorMapDataType tma_type = CU_TENSOR_MAP_DATA_TYPE_FLOAT16;
   CUtensorMapDataType tma_type =
       cute::TMA::to_CUtensorMapDataType<cute::half_t>();
-  constexpr int tma_dim = 2;
+  constexpr cuuint32_t tma_rank = 2;
+  assert((tma_rank >= 2) && "This function only supports tensor rank>=2");
   assert((reinterpret_cast<uint64_t>(gmem_addr) & 0b1111) ==
          0); // Address must be 16B-aligned
-  CUtensorMapInterleave tma_interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
-  CUtensorMapL2promotion tma_l2Promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_128B;
-  CUtensorMapFloatOOBfill tma_oobFill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE;
 
   // shape (M,N)
-  cuuint64_t gmem_prob_shape[2] = {static_cast<cuuint64_t>(M),
-                                   static_cast<cuuint64_t>(N)};
+  cuuint64_t gmem_dim_shape[tma_rank] = {static_cast<cuuint64_t>(N),
+                                         static_cast<cuuint64_t>(M)};
 
   // stride in elements, with stride[0] implicitly 1 per PTX doc
-  cuuint64_t gmem_prob_stride_elems[2] = {
-      0, static_cast<cuuint64_t>(ld)}; // stride[0] ignored
+  // Fix: referring to CUTLASS, stride[0] will get ignored, but stride[1] must
+  // align with
+  cuuint64_t gmem_prob_stride[tma_rank - 1] = {static_cast<cuuint64_t>(ld)};
+
+  for (int i = 0; i < tma_rank - 1; ++i) {
+    gmem_prob_stride[i] *= sizeof(cute::half_t);
+    assert((gmem_prob_stride[i] & 0b1111) == 0 && "Stride must be 16B aligned");
+  }
 
   // Box shape (tile in SMEM)
-  cuuint32_t smem_box_shape[2] = {64u, 64u};
+  cuuint32_t smem_box_shape[tma_rank] = {64u, 64u};
 
-  // Box stride in elements (row-major contiguous)
-  cuuint32_t smem_box_stride[2] = {64u, 1u};
+  // Box stride in elements (row-major contiguous), must in range [1,8] == 1...8 !!!!
+  // reference:
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html#group__CUDA__TENSOR__MEMORY_1ga7c7d2aaac9e49294304e755e6f341d7
+  cuuint32_t smem_box_stride[tma_rank] = {1u, 1u};
+
+  CUtensorMapInterleave tma_interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
   CUtensorMapSwizzle smem_swizzle = CU_TENSOR_MAP_SWIZZLE_NONE;
+  CUtensorMapL2promotion tma_l2Promotion = CU_TENSOR_MAP_L2_PROMOTION_NONE;
+  CUtensorMapFloatOOBfill tma_oobFill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE;
 
   // clang-format off
   CUresult res = CUTLASS_CUDA_DRIVER_WRAPPER_CALL(cuTensorMapEncodeTiled)(
       /* tensorMap */       &tmap, 
       /* tensorDataType */  tma_type, 
-      /* tensorRank */      tma_dim, 
+      /* tensorRank */      tma_rank, 
       /* globalAddress */   const_cast<void *>(gmem_addr), 
-      /* globalDim */       gmem_prob_shape, 
-      /* globalStrides */   gmem_prob_stride_elems + 1, 
+      /* globalDim */       gmem_dim_shape, 
+      /* globalStrides */   gmem_prob_stride, 
       /* boxDim */          smem_box_shape,
       /* elementStrides */  smem_box_stride, 
       /* interleave */      tma_interleave, 
@@ -128,15 +137,22 @@ static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
       /* l2Promotion */     tma_l2Promotion, 
       /* oobFill */         tma_oobFill);
   if (res != CUDA_SUCCESS) {
+    // TODO: res == 1, 
+    /**
+     * CUDA_ERROR_INVALID_VALUE                  = 1,
+     * This indicates that one or more of the parameters passed to the API call
+     * is not within an acceptable range of values.
+     */
+    
     std::cerr << "Error: Failed to initialize the TMA descriptor " << res << std::endl;
     std::cerr << "TMA Desc Addr:   " << &tmap
-              << "\nformat         " << tma_type
-              << "\ndim            " << tma_dim
+              << "\ntensorDataType " << tma_type
+              << "\ntensorRank     " << tma_rank
               << "\ngmem_address   " << const_cast<void *>(gmem_addr)
-              << "\nglobalDim      " << gmem_prob_shape
-              << "\nglobalStrides  " << gmem_prob_stride_elems + 1
-              << "\nboxDim         " << smem_box_shape
-              << "\nelementStrides " << smem_box_stride
+              << "\nglobalDim      " << *gmem_dim_shape
+              << "\nglobalStrides  " << *gmem_prob_stride
+              << "\nboxDim         " << *smem_box_shape
+              << "\nelementStrides " << *smem_box_stride
               << "\ninterleave     " << tma_interleave
               << "\nswizzle        " << smem_swizzle
               << "\nl2Promotion    " << tma_l2Promotion

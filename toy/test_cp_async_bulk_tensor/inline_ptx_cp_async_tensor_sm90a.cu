@@ -7,6 +7,8 @@
 #include <cuda_runtime.h>
 #include <iostream>
 
+#include "cute/arch/copy_sm90_desc.hpp"
+#include "cute/numeric/numeric_types.hpp"
 #include <cutlass/arch/barrier.h>
 #include <cutlass/cuda_host_adapter.hpp>
 
@@ -29,24 +31,23 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm) {
   }
   __syncthreads();
 
-
-
-//////////////// PTX operands mapping ////////////////
-
-/** Syntax of [cp.async.bulk.tensor]
-* // global -> shared::cta
-* 
-* cp.async.bulk.tensor.dim.dst.src{.load_mode}.completion_mechanism{.cta_group}{.level::cache_hint}
-*                                    [dstMem], [tensorMap, tensorCoords], [mbar]{, im2colInfo} {, cache-policy}
-* 
-* .dst =                  { .shared::cta }
-* .src =                  { .global }
-* .dim =                  { .1d, .2d, .3d, .4d, .5d }
-* .completion_mechanism = { .mbarrier::complete_tx::bytes } 
-* .cta_group =            { .cta_group::1, .cta_group::2 }
-* .load_mode =            { .tile, .tile::gather4, .im2col, .im2col::w, .im2col::w::128 }
-* .level::cache_hint =    { .L2::cache_hint }
-*/
+  //////////////// PTX operands mapping ////////////////
+  // clang-format off
+  /** Syntax of [cp.async.bulk.tensor]
+   * // global -> shared::cta
+   *
+   * cp.async.bulk.tensor.dim.dst.src{.load_mode}.completion_mechanism{.cta_group}{.level::cache_hint}
+   *                                    [dstMem], [tensorMap, tensorCoords], [mbar]{, im2colInfo} {, cache-policy}
+   *
+   * .dst =                  { .shared::cta }
+   * .src =                  { .global }
+   * .dim =                  { .1d, .2d, .3d, .4d, .5d }
+   * .completion_mechanism = { .mbarrier::complete_tx::bytes }
+   * .cta_group =            { .cta_group::1, .cta_group::2 }
+   * .load_mode =            { .tile, .tile::gather4, .im2col, .im2col::w, .im2col::w::128 }
+   * .level::cache_hint =    { .L2::cache_hint }
+  */
+  // clang-format on
 
   // dstMem   -> tile in shared::cta
   // tensorMap-> gtm (generic address in .global)
@@ -69,7 +70,7 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm) {
                    "r"(tc1), "l"(cache_policy)
                  : "memory");
   }
-///////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////
 
   // Wait for completion
   cutlass::arch::ClusterTransactionBarrier::wait(mbar, /*phase=*/0);
@@ -81,47 +82,67 @@ k_inline_tma_2d_shared_cta(const void *__restrict__ gtm) {
 }
 
 // Host: Create TensorMap for tensor(M,N) row-major, box=64x64, element=fp16
-static CUtensorMap make_tensormap_half_row_major(const void *base, int M, int N,
-                                                 int ld) {
-  CUtensorMap tmap{};
-  CUtensorMapDataType type = CU_TENSOR_MAP_DATA_TYPE_FLOAT16;
-  cuuint32_t dim = 2;
-  CUtensorMapInterleave interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
-  CUtensorMapL2promotion l2promotion = CU_TENSOR_MAP_L2_PROMOTION_NONE;
-  CUtensorMapFloatOOBfill oob = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE;
-  
+static CUtensorMap make_tensormap_half_row_major(const void *gmem_addr, int M,
+                                                 int N, int ld) {
+  CUtensorMap tmap{}; // 128bit
+  // cute::TmaDescriptor tma_desc; // 128bit, equivalent to CUtensorMap
+
+  // ref: include/cute/arch/copy_sm90_desc.hpp
+  // CUtensorMapDataType tma_type = CU_TENSOR_MAP_DATA_TYPE_FLOAT16;
+  CUtensorMapDataType tma_type =
+      cute::TMA::to_CUtensorMapDataType<cute::half_t>();
+  constexpr int tma_dim = 2;
+  assert((reinterpret_cast<uint64_t>(gmem_addr) & 0b1111) ==
+         0); // Address must be 16B-aligned
+  CUtensorMapInterleave tma_interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
+  CUtensorMapL2promotion tma_l2Promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_128B;
+  CUtensorMapFloatOOBfill tma_oobFill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE;
+
   // shape (M,N)
-  cuuint64_t shape[2] = {static_cast<cuuint64_t>(M), static_cast<cuuint64_t>(N)};
-  
+  cuuint64_t gmem_prob_shape[2] = {static_cast<cuuint64_t>(M),
+                                   static_cast<cuuint64_t>(N)};
+
   // stride in elements, with stride[0] implicitly 1 per PTX doc
-  cuuint64_t stride_elems[2] = {0,
-                              static_cast<cuuint64_t>(ld)}; // stride[0] ignored
-  
+  cuuint64_t gmem_prob_stride_elems[2] = {
+      0, static_cast<cuuint64_t>(ld)}; // stride[0] ignored
+
   // Box shape (tile in SMEM)
-  cuuint32_t box[2] = {64u, 64u};
+  cuuint32_t smem_box_shape[2] = {64u, 64u};
 
   // Box stride in elements (row-major contiguous)
-  cuuint32_t bstride[2] = {64u, 1u};
-  CUtensorMapSwizzle swz = CU_TENSOR_MAP_SWIZZLE_NONE;
+  cuuint32_t smem_box_stride[2] = {64u, 1u};
+  CUtensorMapSwizzle smem_swizzle = CU_TENSOR_MAP_SWIZZLE_NONE;
 
   // clang-format off
   CUresult res = CUTLASS_CUDA_DRIVER_WRAPPER_CALL(cuTensorMapEncodeTiled)(
-      &tmap, 
-      type, 
-      dim, 
-      const_cast<void *>(base), 
-      shape, 
-      stride_elems + 1, 
-      box,
-      bstride, 
-      interleave, 
-      swz, 
-      l2promotion, 
-      oob);
-  // clang-format on
+      /* tensorMap */       &tmap, 
+      /* tensorDataType */  tma_type, 
+      /* tensorRank */      tma_dim, 
+      /* globalAddress */   const_cast<void *>(gmem_addr), 
+      /* globalDim */       gmem_prob_shape, 
+      /* globalStrides */   gmem_prob_stride_elems + 1, 
+      /* boxDim */          smem_box_shape,
+      /* elementStrides */  smem_box_stride, 
+      /* interleave */      tma_interleave, 
+      /* swizzle */         smem_swizzle, 
+      /* l2Promotion */     tma_l2Promotion, 
+      /* oobFill */         tma_oobFill);
   if (res != CUDA_SUCCESS) {
-    std::cerr << "cuTensorMapEncodeTiled failed: " << res << std::endl;
-    std::abort();
+    std::cerr << "Error: Failed to initialize the TMA descriptor " << res << std::endl;
+    std::cerr << "TMA Desc Addr:   " << &tmap
+              << "\nformat         " << tma_type
+              << "\ndim            " << tma_dim
+              << "\ngmem_address   " << const_cast<void *>(gmem_addr)
+              << "\nglobalDim      " << gmem_prob_shape
+              << "\nglobalStrides  " << gmem_prob_stride_elems + 1
+              << "\nboxDim         " << smem_box_shape
+              << "\nelementStrides " << smem_box_stride
+              << "\ninterleave     " << tma_interleave
+              << "\nswizzle        " << smem_swizzle
+              << "\nl2Promotion    " << tma_l2Promotion
+              << "\noobFill        " << tma_oobFill << std::endl;
+    // clang-format on
+    assert(false);
   }
   return tmap;
 }
@@ -136,7 +157,7 @@ int main() {
   std::vector<__half> hA(M * N);
   for (int i = 0; i < M * N; ++i)
     hA[i] = __float2half(float(i));
-  
+
   cudaMemcpy(dA, hA.data(), bytes, cudaMemcpyHostToDevice);
 
   // Create TensorMap on host, upload it to device memory

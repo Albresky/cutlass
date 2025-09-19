@@ -200,8 +200,9 @@ int main() {
     for (int n = 0; n < TILE_N; ++n) {
       __half v = h_out[m * TILE_N + n];
       __half golden = hA[m * N + n];
-      if (v != golden) {
-        printf("Error: golden[%d, %d]=%f, value[%d, %d]=%f\n", m, n,
+      if (abs(__half2float(v) - __half2float(golden)) > 0.00001f) {
+        ++errors;
+        printf("Error[%d]: golden[%d, %d]=%f, value[%d, %d]=%f\n", errors, m, n,
                __half2float(golden), m, n, __half2float(v));
       }
     }

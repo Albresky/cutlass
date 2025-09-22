@@ -11,12 +11,6 @@
 .address_size 64
 
 	// .globl	k_inline_tma_2d_shared_cta
-.extern .func  (.param .b32 func_retval0) vprintf
-(
-	.param .b64 vprintf_param_0,
-	.param .b64 vprintf_param_1
-)
-;
 .global .align 1 .b8 _ZN66_INTERNAL_b68733b7_35_inline_ptx_cp_async_tensor_sm90a_cu_572094c14cuda3std3__45__cpo5beginE[1];
 .global .align 1 .b8 _ZN66_INTERNAL_b68733b7_35_inline_ptx_cp_async_tensor_sm90a_cu_572094c14cuda3std3__45__cpo3endE[1];
 .global .align 1 .b8 _ZN66_INTERNAL_b68733b7_35_inline_ptx_cp_async_tensor_sm90a_cu_572094c14cuda3std3__45__cpo6cbeginE[1];
@@ -27,127 +21,160 @@
 .global .align 1 .b8 _ZN66_INTERNAL_b68733b7_35_inline_ptx_cp_async_tensor_sm90a_cu_572094c14cuda3std6ranges3__45__cpo4swapE[1];
 .global .align 1 .b8 _ZN66_INTERNAL_b68733b7_35_inline_ptx_cp_async_tensor_sm90a_cu_572094c14cuda3std6ranges3__45__cpo9iter_moveE[1];
 .extern .shared .align 16 .b8 smem[];
-.global .align 1 .b8 $str[23] = {105, 110, 108, 105, 110, 101, 45, 112, 116, 120, 32, 115, 91, 48, 43, 37, 117, 93, 61, 37, 102, 10};
 
 .visible .entry k_inline_tma_2d_shared_cta(
-	.param .u64 .ptr .align 1 k_inline_tma_2d_shared_cta_param_0
+	.param .u64 .ptr .align 1 k_inline_tma_2d_shared_cta_param_0,
+	.param .u64 .ptr .align 1 k_inline_tma_2d_shared_cta_param_1
 )
 {
-	.local .align 16 .b8 	__local_depot0[16];
-	.reg .b64 	%SP;
-	.reg .b64 	%SPL;
-	.reg .pred 	%p<4>;
-	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<20>;
-	.reg .b32 	%f<2>;
-	.reg .b64 	%rd<8>;
-	.reg .b64 	%fd<2>;
-	.loc	1 17 0
+	.reg .pred 	%p<6>;
+	.reg .b16 	%rs<11>;
+	.reg .b32 	%r<62>;
+	.reg .b64 	%rd<16>;
+	.loc	1 18 0
 
-	mov.u64 	%SPL, __local_depot0;
-	cvta.local.u64 	%SP, %SPL;
-	ld.param.u64 	%rd1, [k_inline_tma_2d_shared_cta_param_0];
-	.loc	1 24 3
-	mov.u32 	%r1, %tid.x;
-	setp.ne.s32 	%p1, %r1, 0;
+	ld.param.u64 	%rd2, [k_inline_tma_2d_shared_cta_param_0];
+	ld.param.u64 	%rd3, [k_inline_tma_2d_shared_cta_param_1];
+	.loc	1 25 3
+	cvta.to.global.u64 	%rd1, %rd3;
+	mov.u32 	%r56, %tid.x;
+	setp.ne.s32 	%p1, %r56, 0;
 	@%p1 bra 	$L__BB0_2;
-	.loc	1 26 5
-	.loc	2 399 15, function_name $L__info_string0, inlined_at 1 26 5
-	mov.u32 	%r6, smem;
-	add.s32 	%r5, %r6, 8192;
-	mov.b32 	%r2, 1;
+	.loc	1 27 5
+	.loc	2 399 15, function_name $L__info_string0, inlined_at 1 27 5
+	mov.u32 	%r31, smem;
+	add.s32 	%r30, %r31, 8192;
+	mov.b32 	%r27, 1;
 	// begin inline asm
 	{
-	mbarrier.init.shared::cta.b64 [%r5], %r2; 
+	mbarrier.init.shared::cta.b64 [%r30], %r27; 
 }
 	// end inline asm
-	mov.b32 	%r4, 8192;
-	.loc	1 27 5
-	.loc	2 588 15, function_name $L__info_string1, inlined_at 1 27 5
+	mov.b32 	%r29, 8192;
+	.loc	1 28 5
+	.loc	2 588 15, function_name $L__info_string1, inlined_at 1 28 5
 	// begin inline asm
 	{
-	mbarrier.arrive.expect_tx.shared::cta.b64 _, [%r5], %r4; 
+	mbarrier.arrive.expect_tx.shared::cta.b64 _, [%r30], %r29; 
 	}
 	// end inline asm
 $L__BB0_2:
-	.loc	1 24 3
-	setp.ne.s32 	%p2, %r1, 0;
-	.loc	1 30 3
+	.loc	1 25 3
+	setp.ne.s32 	%p2, %r56, 0;
+	.loc	1 31 3
 	bar.sync 	0;
 	.loc	1 63 3
 	@%p2 bra 	$L__BB0_4;
 	.loc	1 69 24
-	mov.u32 	%r7, smem;
-	add.s32 	%r8, %r7, 8192;
-	mov.b32 	%r10, 0;
-	mov.b64 	%rd3, 0;
+	mov.u32 	%r32, smem;
+	add.s32 	%r33, %r32, 8192;
+	mov.b32 	%r35, 0;
+	mov.b64 	%rd5, 0;
 	// begin inline asm
 	cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes.L2::cache_hint
-	 [%r7], [%rd1, {%r10, %r10}], [%r8], %rd3;
+	 [%r32], [%rd2, {%r35, %r35}], [%r33], %rd5;
 	
 	// end inline asm
 $L__BB0_4:
 	.loc	1 75 3
 	.loc	2 424 15, function_name $L__info_string2, inlined_at 1 75 3
-	mov.u32 	%r14, smem;
-	add.s32 	%r11, %r14, 8192;
-	mov.b32 	%r12, 0;
-	mov.b32 	%r13, 10000000;
+	mov.u32 	%r39, smem;
+	add.s32 	%r36, %r39, 8192;
+	mov.b32 	%r37, 0;
+	mov.b32 	%r38, 10000000;
 	// begin inline asm
 	{
 	.reg .pred       P1; 
 	LAB_WAIT: 
-	mbarrier.try_wait.parity.shared::cta.b64 P1, [%r11], %r12, %r13; 
+	mbarrier.try_wait.parity.shared::cta.b64 P1, [%r36], %r37, %r38; 
 	@P1 bra DONE; 
 	bra     LAB_WAIT; 
 	DONE: 
 	}
 	// end inline asm
-	.loc	1 77 3
-	setp.gt.u32 	%p3, %r1, 3;
-	@%p3 bra 	$L__BB0_6;
-	.loc	1 0 3
-	add.u64 	%rd4, %SP, 0;
-	.loc	1 24 3
-	add.u64 	%rd5, %SPL, 0;
-	.loc	1 78 5
-	shl.b32 	%r15, %r1, 1;
-	add.s32 	%r17, %r14, %r15;
-	ld.shared.u16 	%rs1, [%r17];
-	.loc	1 78 5
-	.loc	3 708 1, function_name $L__info_string3, inlined_at 1 78 5
-	// begin inline asm
-	{  cvt.f32.f16 %f1, %rs1;}
-
-	// end inline asm
-	.loc	1 79 5
-	cvt.f64.f32 	%fd1, %f1;
-	st.local.u32 	[%rd5], %r1;
-	st.local.f64 	[%rd5+8], %fd1;
-	mov.u64 	%rd6, $str;
-	cvta.global.u64 	%rd7, %rd6;
-	{ // callseq 0, 0
-	.param .b64 param0;
-	st.param.b64 	[param0], %rd7;
-	.param .b64 param1;
-	st.param.b64 	[param1], %rd4;
-	.param .b32 retval0;
-	call.uni (retval0), 
-	vprintf, 
-	(
-	param0, 
-	param1
-	);
-	ld.param.b32 	%r18, [retval0];
-	} // callseq 0
+	mov.u32 	%r2, %ntid.x;
+	.loc	1 79 3
+	add.s32 	%r40, %r56, %r2;
+	cvt.u16.u32 	%rs2, %r40;
+	xor.b16  	%rs3, %rs2, 4095;
+	cvt.u16.u32 	%rs4, %r2;
+	div.u16 	%rs5, %rs3, %rs4;
+	and.b16  	%rs1, %rs5, 3;
+	setp.eq.s16 	%p3, %rs1, 2;
+	@%p3 bra 	$L__BB0_7;
+	cvt.u32.u16 	%r3, %rs1;
+	mov.b32 	%r55, 0;
 $L__BB0_6:
-	.loc	1 81 1
+	.pragma "nounroll";
+	.loc	1 80 5
+	mul.wide.u32 	%rd6, %r56, 2;
+	add.s64 	%rd7, %rd1, %rd6;
+	shl.b32 	%r42, %r56, 1;
+	add.s32 	%r44, %r39, %r42;
+	ld.shared.u16 	%rs6, [%r44];
+	st.global.u16 	[%rd7], %rs6;
+	.loc	1 79 51
+	add.s32 	%r56, %r56, %r2;
+	.loc	1 79 3
+	add.s32 	%r55, %r55, 1;
+	xor.b32  	%r45, %r55, %r3;
+	setp.ne.s32 	%p4, %r45, 2;
+	@%p4 bra 	$L__BB0_6;
+$L__BB0_7:
+	shl.b32 	%r9, %r2, 1;
+	add.s32 	%r60, %r56, %r9;
+	shl.b32 	%r11, %r2, 2;
+	mad.lo.s32 	%r59, %r2, 3, %r56;
+	add.s32 	%r58, %r2, %r56;
+	shl.b32 	%r46, %r56, 1;
+	add.s32 	%r57, %r39, %r46;
+	shl.b32 	%r15, %r2, 3;
+	mul.lo.s32 	%r16, %r2, 6;
+$L__BB0_8:
+	.loc	1 80 5
+	mul.wide.u32 	%rd8, %r56, 2;
+	add.s64 	%rd9, %rd1, %rd8;
+	ld.shared.u16 	%rs7, [%r57];
+	st.global.u16 	[%rd9], %rs7;
+	.loc	1 79 51
+	add.s32 	%r48, %r56, %r2;
+	.loc	1 80 5
+	mul.wide.u32 	%rd10, %r58, 2;
+	add.s64 	%rd11, %rd1, %rd10;
+	add.s32 	%r49, %r57, %r9;
+	ld.shared.u16 	%rs8, [%r49];
+	st.global.u16 	[%rd11], %rs8;
+	.loc	1 79 51
+	add.s32 	%r50, %r48, %r2;
+	.loc	1 80 5
+	mul.wide.u32 	%rd12, %r60, 2;
+	add.s64 	%rd13, %rd1, %rd12;
+	add.s32 	%r51, %r57, %r11;
+	ld.shared.u16 	%rs9, [%r51];
+	st.global.u16 	[%rd13], %rs9;
+	.loc	1 79 51
+	add.s32 	%r52, %r50, %r2;
+	.loc	1 80 5
+	mul.wide.u32 	%rd14, %r59, 2;
+	add.s64 	%rd15, %rd1, %rd14;
+	add.s32 	%r53, %r57, %r16;
+	ld.shared.u16 	%rs10, [%r53];
+	st.global.u16 	[%rd15], %rs10;
+	.loc	1 79 51
+	add.s32 	%r56, %r52, %r2;
+	.loc	1 79 3
+	add.s32 	%r60, %r60, %r11;
+	add.s32 	%r59, %r59, %r11;
+	add.s32 	%r58, %r58, %r11;
+	add.s32 	%r57, %r57, %r15;
+	setp.lt.u32 	%p5, %r56, 4096;
+	@%p5 bra 	$L__BB0_8;
+	.loc	1 82 1
 	ret;
 
 }
 	.file	1 "/root/wkspace/cutlass/toy/test_cp_async_bulk_tensor/inline_ptx_cp_async_tensor_sm90a.cu"
 	.file	2 "/root/wkspace/cutlass/include/cutlass/arch/barrier.h"
-	.file	3 "/usr/local/cuda-13.0/bin/../targets/x86_64-linux/include/cuda_fp16.hpp"
 	.section	.debug_str
 	{
 $L__info_string0:
@@ -309,100 +336,5 @@ $L__info_string2:
 .b8 75
 .b8 109
 .b8 106
-.b8 0
-$L__info_string3:
-.b8 95
-.b8 90
-.b8 78
-.b8 54
-.b8 54
-.b8 95
-.b8 73
-.b8 78
-.b8 84
-.b8 69
-.b8 82
-.b8 78
-.b8 65
-.b8 76
-.b8 95
-.b8 98
-.b8 54
-.b8 56
-.b8 55
-.b8 51
-.b8 51
-.b8 98
-.b8 55
-.b8 95
-.b8 51
-.b8 53
-.b8 95
-.b8 105
-.b8 110
-.b8 108
-.b8 105
-.b8 110
-.b8 101
-.b8 95
-.b8 112
-.b8 116
-.b8 120
-.b8 95
-.b8 99
-.b8 112
-.b8 95
-.b8 97
-.b8 115
-.b8 121
-.b8 110
-.b8 99
-.b8 95
-.b8 116
-.b8 101
-.b8 110
-.b8 115
-.b8 111
-.b8 114
-.b8 95
-.b8 115
-.b8 109
-.b8 57
-.b8 48
-.b8 97
-.b8 95
-.b8 99
-.b8 117
-.b8 95
-.b8 53
-.b8 55
-.b8 50
-.b8 48
-.b8 57
-.b8 52
-.b8 99
-.b8 49
-.b8 49
-.b8 50
-.b8 95
-.b8 95
-.b8 104
-.b8 97
-.b8 108
-.b8 102
-.b8 50
-.b8 102
-.b8 108
-.b8 111
-.b8 97
-.b8 116
-.b8 69
-.b8 54
-.b8 95
-.b8 95
-.b8 104
-.b8 97
-.b8 108
-.b8 102
 .b8 0
 	}

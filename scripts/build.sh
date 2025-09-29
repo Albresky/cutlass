@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-BASE_DIR=$(cd "$(dirname "$0")" && pwd)
+BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)
 BUILD_DIR=$BASE_DIR/build
 LOG_DIR=$BASE_DIR/log
 

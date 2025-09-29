@@ -480,9 +480,9 @@ endif()
 if (CUTLASS_CLANG_HOST_COMPILE)
 
   set(FLAGS_TO_ADD
-    "-Wno-error=implicit-int-conversion"
-    "-Wno-error=pass-failed"
-    "-Wno-error=inconsistent-missing-override"
+    # "-Wno-error=implicit-int-conversion"
+    # "-Wno-error=pass-failed"
+    # "-Wno-error=inconsistent-missing-override"
     "-Wno-sign-conversion"
     "-Wno-unused-parameter"
   )
